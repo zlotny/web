@@ -1,0 +1,43 @@
+html {
+    margin: 0;
+    font-family: 'Fira Mono', monospace;
+}
+
+body {
+    background-color: #171717;
+    color: #ededed;
+}
+
+pre {
+    font-family: 'Fira Mono', monospace;
+    font-size: 12px;
+}
+
+pre a {
+    color: inherit;
+    text-decoration: none;
+}
+
+pre a:hover {
+    text-decoration: underline;
+}
+
+.cl-red {
+    color: red;
+}
+
+.console-input {
+    background-color: transparent;
+    color: #ededed;
+    border: none;
+    outline: none;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    min-width: calc(100% - 2em);
+    resize: none;
+    margin-bottom: -2px;
+}
