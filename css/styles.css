@@ -6,11 +6,13 @@ html {
 body {
     background-color: #171717;
     color: #ededed;
+    margin: 0px auto;
 }
 
 pre {
     font-family: 'Fira Mono', monospace;
     font-size: 12px;
+    width: 700px;
 }
 
 pre a {
@@ -40,4 +42,17 @@ pre a:hover {
     min-width: calc(100% - 2em);
     resize: none;
     margin-bottom: -2px;
+}
+
+@media only screen and (min-width: 900px) {
+    body>pre {
+        margin-left: 100px;
+    }
+}
+
+
+@media only screen and (min-width: 1300px) {
+    body>pre {
+        margin-left: 300px;
+    }
 }
