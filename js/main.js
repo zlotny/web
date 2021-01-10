@@ -154,7 +154,7 @@ function cmdAboutMyself(parameters) {
     s += "I just like computers, building stuff and learning new things. I'm also fond of refining\n";
     s += "my way of doing things.\n";
     s += "\n";
-    s += "I'm from north-east Spain; I like videogames, motorcycles, gadgets and fantasy settings.\n";
+    s += "I'm from north-west Spain; I like videogames, motorcycles, gadgets and fantasy settings.\n";
     s += "I also have a pet cockatiel called Lelo.\n";
     s += "\n";
     s += "You can find me on:\n";
