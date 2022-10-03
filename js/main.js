@@ -164,6 +164,8 @@ function cmdAboutMyself(parameters) {
     s += "- <a target=\"_blank\" href=\"https://twitter.com/ndrs_\">Twitter</a>\n";
     s += "- <a target=\"_blank\" href=\"https://www.instagram.com/zlotny/\">Instagram</a>\n";
     s += "\n";
+    s += "<a target=\"_blank\" href=\"spaingj2022/\">Check out a game I made with some friends for the 2022 Spain Game Jam: Link</a> \n";
+    s += "\n";
     s += ":)\n";
     s += "\n";
     s += "BTW, type <b>help</b> to fiddle a bit more if you want.\n\n";
