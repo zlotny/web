@@ -1,2 +1,5 @@
 files/
 share/
+node_modules/
+dist/
+.DS_Store

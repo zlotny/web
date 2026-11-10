@@ -1,25 +1,119 @@
-<!DOCTYPE html>
-<html>
-
-<head>
-  <meta charset="utf-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <title>Andrés Vieira</title>
-
-  <link rel="icon" href="#" type="image/png" />
-
-  <link href="https://fonts.googleapis.com/css?family=Fira+Mono&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css">
-</head>
-
-<body>
-  <pre>
-<div id="stdout"></div><span id="commandLine"><span id="prompt" class="cl-red">~ λ</span> <textarea autofocus autocorrect="off" autocapitalize="none" rows="1" class='console-input'></textarea></span>
-
-</pre>
-</body>
-<script src="./js/main.js"></script>
-
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b1020" />
+    <title>Andrés Vieira · ndrs · zlotny</title>
+    <meta name="description" content="Andrés Vieira (ndrs, zlotny). A small world about me: fly over the island as Lelo, my cockatiel." />
+    <meta property="og:title" content="Andrés Vieira · ndrs · zlotny" />
+    <meta property="og:description" content="A small world about me. Take a flight." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://ndrs.es/" />
+    <meta property="og:image" content="https://ndrs.es/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://ndrs.es/" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230c101e'/%3E%3Cg fill='none' stroke='%23f6dd52' stroke-width='7' stroke-linecap='round'%3E%3Cpath d='M50 84C46 60 40 42 52 16'/%3E%3Cpath d='M50 84C52 62 54 46 68 26'/%3E%3Cpath d='M50 84C42 64 32 52 30 32'/%3E%3C/g%3E%3Ccircle cx='50' cy='84' r='9' fill='%23f0692c'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/src/ui/style.css" />
+    <style>
+      #boot {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        gap: 1.6rem;
+        background: radial-gradient(ellipse at 50% 42%, #1c2742, #0c101e 70%);
+        color: #f7f2e6;
+        font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+        transition: opacity 0.9s ease, visibility 0s linear 0.9s;
+      }
+      #boot.done {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      #boot svg {
+        width: 5.5rem;
+        height: 5.5rem;
+        overflow: visible;
+      }
+      #boot .plume {
+        fill: none;
+        stroke: #f6dd52;
+        stroke-width: 3.2;
+        stroke-linecap: round;
+        transform-origin: 50% 88%;
+        animation: boot-sway 1.5s ease-in-out infinite alternate;
+      }
+      #boot .plume:nth-child(2) { animation-delay: -0.25s; }
+      #boot .plume:nth-child(3) { animation-delay: -0.5s; }
+      #boot .plume:nth-child(4) { animation-delay: -0.75s; }
+      #boot .cheek {
+        fill: #f0692c;
+        animation: boot-pulse 1.5s ease-in-out infinite alternate;
+        transform-origin: 50% 88%;
+      }
+      #boot h1 {
+        margin: 0;
+        font-style: italic;
+        font-weight: 500;
+        font-size: clamp(1.8rem, 6vw, 3rem);
+        letter-spacing: -0.01em;
+      }
+      #boot .track {
+        width: min(15rem, 60vw);
+        height: 3px;
+        border-radius: 3px;
+        background: rgba(247, 242, 230, 0.16);
+        overflow: hidden;
+      }
+      #boot .fill {
+        width: 100%;
+        height: 100%;
+        background: #f6dd52;
+        transform: scaleX(0.04);
+        transform-origin: 0 50%;
+        transition: transform 0.5s ease;
+      }
+      #boot p {
+        margin: 0;
+        font-family: ui-rounded, 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+        font-size: 0.78rem;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: rgba(247, 242, 230, 0.7);
+        min-height: 1.2em;
+      }
+      @keyframes boot-sway {
+        from { transform: rotate(-9deg); }
+        to { transform: rotate(8deg); }
+      }
+      @keyframes boot-pulse {
+        from { transform: scale(0.85); }
+        to { transform: scale(1.1); }
+      }
+    </style>
+  </head>
+  <body>
+    <noscript><p style="position:fixed;inset:0;z-index:99;display:grid;place-content:center;margin:0;background:#0c101e;color:#f7f2e6;font-family:Georgia,serif;text-align:center">Andrés Vieira, software engineer from Galicia.<br />This island needs JavaScript.</p></noscript>
+    <div id="boot" role="status" aria-live="polite">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <path class="plume" d="M50 88 C46 60 40 40 52 14" />
+        <path class="plume" d="M50 88 C52 62 52 44 66 22" />
+        <path class="plume" d="M50 88 C56 66 62 52 78 36" />
+        <path class="plume" d="M50 88 C42 66 32 52 30 30" />
+        <circle class="cheek" cx="50" cy="88" r="7" />
+      </svg>
+      <h1>Andrés Vieira</h1>
+      <div class="track"><div class="fill" id="boot-fill"></div></div>
+      <p id="boot-text">Loading</p>
+    </div>
+    <canvas id="world"></canvas>
+    <div id="ui"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>
