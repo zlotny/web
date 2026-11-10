@@ -56,6 +56,7 @@ export class Tank {
   private spare: Float32Array | null = null;
   private waiting = false;
   private count = 0;
+  private shapes: THREE.BufferGeometry[] = [];
 
   constructor(x: number, ground: number, z: number, yaw: number, light: LightMap, spacing: number, obstacles: Obstacles) {
     const frame = new THREE.Group();
@@ -111,12 +112,20 @@ export class Tank {
     const light = env.ambientSky.mul(normal.y.mul(0.3).add(0.7)).add(env.sunColor.mul(facing.mul(0.5).add(0.12)));
     const lit = pow(foam, vec3(2.2)).mul(light).add(env.skyHorizon.mul(rim.mul(0.35))).add(env.sunColor.mul(glint.mul(0.5)));
     material.colorNode = applyFog(lit, positionWorld);
-    const geometry = new THREE.IcosahedronGeometry(1, 1);
-    geometry.setAttribute('particle', this.buffer);
-    this.sprite = new THREE.Mesh(geometry, material);
+    const bound = new THREE.Sphere(new THREE.Vector3(TANK.length / 2, TANK.height / 2, TANK.width / 2), Math.hypot(TANK.length, TANK.height, TANK.width) / 2 + 1);
+    this.shapes = [1, 0].map((detail) => {
+      const geometry = new THREE.IcosahedronGeometry(1, detail);
+      geometry.setAttribute('particle', this.buffer!);
+      geometry.boundingSphere = bound;
+      return geometry;
+    });
+    this.sprite = new THREE.Mesh(this.shapes[0], material);
     this.sprite.count = this.count;
-    this.sprite.frustumCulled = false;
     frame.add(this.sprite);
+  }
+
+  focus(distance: number): void {
+    if (this.sprite) this.sprite.geometry = this.shapes[distance > 90 ? 1 : 0];
   }
 
   update(active: boolean): void {

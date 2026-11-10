@@ -5,6 +5,7 @@ import { WORLD_SIZE, type HeightMap } from './height';
 import type { LightMap } from './lightmap';
 import { sculptMaterial, type RGB } from './sculpt';
 import { env, type N } from './shading';
+import { LodField, type LodKind } from './lod';
 
 function colored(geometry: THREE.BufferGeometry, color: (p: THREE.Vector3, n: THREE.Vector3) => RGB): THREE.BufferGeometry {
   const flat = geometry.index ? geometry.toNonIndexed() : geometry;
@@ -25,9 +26,9 @@ function colored(geometry: THREE.BufferGeometry, color: (p: THREE.Vector3, n: TH
   return flat;
 }
 
-function boulder(seed: number): THREE.BufferGeometry {
+function boulder(seed: number, detail = 1): THREE.BufferGeometry {
   const simplex = new Simplex(seed);
-  const geometry = new THREE.IcosahedronGeometry(1, 1);
+  const geometry = new THREE.IcosahedronGeometry(1, detail);
   const position = geometry.attributes.position;
   const v = new THREE.Vector3();
   for (let i = 0; i < position.count; i++) {
@@ -42,7 +43,8 @@ function boulder(seed: number): THREE.BufferGeometry {
   });
 }
 
-function bush(seed: number, flower: RGB, leaf: RGB): THREE.BufferGeometry {
+function bush(seed: number, flower: RGB, leaf: RGB, detail = 1, keep = 1): THREE.BufferGeometry {
+  const grow = Math.sqrt(keep);
   const rand = mulberry32(seed);
   const simplex = new Simplex(seed * 13);
   const positions: number[] = [];
@@ -60,7 +62,7 @@ function bush(seed: number, flower: RGB, leaf: RGB): THREE.BufferGeometry {
     const cx = (rand() - 0.5) * 1.7;
     const cy = 0.25 + rand() * 0.3;
     const cz = (rand() - 0.5) * 1.7;
-    const ball = new THREE.IcosahedronGeometry(1, 1);
+    const ball = new THREE.IcosahedronGeometry(1, detail);
     const position = ball.attributes.position;
     let tone = 1;
     for (let i = 0; i < position.count; i++) {
@@ -80,13 +82,14 @@ function bush(seed: number, flower: RGB, leaf: RGB): THREE.BufferGeometry {
       const ring = Math.sqrt(Math.max(0, 1 - u * u));
       out.set(ring * Math.cos(phi), u, ring * Math.sin(phi));
       const bloom = u > 0.1 && rand() < 0.36;
-      const size = bloom ? 0.07 + rand() * 0.06 : 0.11 + rand() * 0.11;
+      const size = (bloom ? 0.07 + rand() * 0.06 : 0.11 + rand() * 0.11) * grow;
       const reach = radius * (bloom ? 1.1 : 1.02);
       v.set(cx + out.x * reach, cy + out.y * reach * squash, cz + out.z * reach);
       tangent.set(-out.z, 0, out.x).normalize();
       bitangent.crossVectors(out, tangent).normalize();
       const spin = rand() * Math.PI;
       const k1 = 0.95 + rand() * 0.4;
+      if (k % keep !== 0) continue;
       const tint: RGB = bloom ? [flower[0] * k1, flower[1] * k1, flower[2] * k1] : [leaf[0] * k1 * 1.12, leaf[1] * k1 * 1.16, leaf[2] * k1];
       const quad = [
         [-size, 0],
@@ -117,6 +120,8 @@ function bush(seed: number, flower: RGB, leaf: RGB): THREE.BufferGeometry {
 
 export interface ScatterSettings {
   density: number;
+  chunk: number;
+  ranges: number[];
 }
 
 export function createScatter(
@@ -124,21 +129,24 @@ export function createScatter(
   light: LightMap,
   settings: ScatterSettings,
   blocked: (x: number, z: number) => boolean,
-): THREE.Group {
-  const group = new THREE.Group();
-  group.name = 'scatter';
+): LodField {
   const material = sculptMaterial();
   const rand = mulberry32(555);
   const patches = new Simplex(808);
   const dummy = new THREE.Object3D();
   const half = WORLD_SIZE / 2;
 
-  const kinds: { geometry: THREE.BufferGeometry; items: THREE.Matrix4[] }[] = [
-    { geometry: boulder(1), items: [] },
-    { geometry: boulder(2), items: [] },
-    { geometry: bush(3, [0.98, 0.82, 0.16], [0.27, 0.4, 0.2]), items: [] },
-    { geometry: bush(4, [0.72, 0.42, 0.76], [0.36, 0.4, 0.29]), items: [] },
-    { geometry: bush(5, [0.95, 0.93, 0.85], [0.3, 0.44, 0.24]), items: [] },
+  const bushes: [number, RGB, RGB][] = [
+    [3, [0.98, 0.82, 0.16], [0.27, 0.4, 0.2]],
+    [4, [0.72, 0.42, 0.76], [0.36, 0.4, 0.29]],
+    [5, [0.95, 0.93, 0.85], [0.3, 0.44, 0.24]],
+  ];
+  const kinds: LodKind[] = [
+    ...[1, 2].map((seed) => {
+      const full = boulder(seed);
+      return { levels: [full, full, boulder(seed, 0)], material, items: [] as THREE.Matrix4[] };
+    }),
+    ...bushes.map(([seed, flower, leaf]) => ({ levels: [bush(seed, flower, leaf), bush(seed, flower, leaf, 1, 3), bush(seed, flower, leaf, 0, 6)], material, items: [] })),
   ];
 
   const spacing = 11;
@@ -172,18 +180,7 @@ export function createScatter(
     }
   }
 
-  let total = 0;
-  for (const kind of kinds) {
-    if (!kind.items.length) continue;
-    const mesh = new THREE.InstancedMesh(kind.geometry, material, kind.items.length);
-    kind.items.forEach((m, i) => mesh.setMatrixAt(i, m));
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.frustumCulled = false;
-    group.add(mesh);
-    total += kind.items.length;
-  }
-  group.userData.count = total;
-  return group;
+  return new LodField('scatter', kinds.filter((kind) => kind.items.length), settings.chunk, settings.ranges);
 }
 
 export function createBeam(): THREE.Group {

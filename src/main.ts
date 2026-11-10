@@ -3,6 +3,7 @@ import { Sound } from './audio/sound';
 import { Input, type Controls } from './core/input';
 import { Post, configureToneMapping } from './core/post';
 import { Governor, pickQuality } from './core/quality';
+import { Profiler } from './core/profiler';
 import { content, language } from './content';
 import { ACHIEVEMENTS, Progress } from './game/progress';
 import { Race } from './game/race';
@@ -37,6 +38,7 @@ import { createSurf } from './world/surf';
 import { Tank } from './world/tank';
 import { createTerrain } from './world/terrain';
 import { createTrees } from './world/trees';
+import { LodField } from './world/lod';
 import { SITES, Village } from './world/village';
 import { createWater } from './world/water';
 import { Finale } from './ui/finale';
@@ -79,7 +81,7 @@ async function start(): Promise<void> {
   const hud = new Hud(input);
   await stage(0.08);
 
-  const renderer = new THREE.WebGPURenderer({ canvas, antialias: false, forceWebGL: params.has('webgl'), reversedDepthBuffer: true });
+  const renderer = new THREE.WebGPURenderer({ canvas, antialias: false, forceWebGL: params.has('webgl'), reversedDepthBuffer: true, trackTimestamp: params.has('prof') });
   try {
     await renderer.init();
   } catch {
@@ -96,6 +98,7 @@ async function start(): Promise<void> {
   };
   const webgpu = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend === true;
   const quality = pickQuality(params, webgpu);
+  LodField.detail = quality.lod;
   configureToneMapping(renderer);
   await stage(0.2);
 
@@ -127,7 +130,7 @@ async function start(): Promise<void> {
   const coca = new Coca(map);
   await stage(0.58);
   const sky = createSky();
-  const trees = createTrees(map, light, mask, { density: quality.trees }, blocked, obstacles);
+  const trees = createTrees(map, light, mask, { density: quality.trees, chunk: 160, ranges: [120, 320, 640] }, blocked, obstacles);
   await stage(0.72);
   village.build(light, mask, obstacles);
   city.build(light, mask, obstacles);
@@ -142,7 +145,7 @@ async function start(): Promise<void> {
       if (beachWeight(bx, bz) > 0.25 && map.sample(bx, bz) < 8.5) mask.bare(bx, bz, 15, 1);
     }
   }
-  const scatter = createScatter(map, light, { density: quality.scatter }, blocked);
+  const scatter = createScatter(map, light, { density: quality.scatter, chunk: 160, ranges: [70, 190] }, blocked);
   const basin = new Tank(tank.x, map.sample(tank.x, tank.z), tank.z, 0.55, light, quality.fluid, obstacles);
   const fleet = new Fleet(map, obstacles, quality.boats);
   const motes = new Motes(quality.motes);
@@ -287,7 +290,7 @@ async function start(): Promise<void> {
     place('bench', summit.x, summit.z, 60, 20, 7, 1.2, 5),
   ]);
 
-  scene.add(sky, createTerrain(map, quality.terrain), createWater(), createSurf(map, quality.surf), trees, scatter, village.group, city.group, arcade.group, dioramas.group, nods.group, galicia.group, coca.group, ...barriers, basin.group, fleet.group, ...life, landmarks.group, ...lawns.map((lawn) => lawn.mesh));
+  scene.add(sky, createTerrain(map, quality.terrain), createWater(), createSurf(map, quality.surf), trees.group, scatter.group, village.group, city.group, arcade.group, dioramas.group, nods.group, galicia.group, coca.group, ...barriers, basin.group, fleet.group, ...life, landmarks.group, ...lawns.map((lawn) => lawn.mesh));
 
   const flight = new Flight(map, obstacles);
   flight.place(-1250, 70, -260, Math.PI * 0.42);
@@ -339,17 +342,23 @@ async function start(): Promise<void> {
   const resize = () => {
     const width = window.innerWidth;
     const height = window.innerHeight;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.dpr) * governor.scale);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, Math.min(window.devicePixelRatio, quality.dpr) * governor.scale));
     renderer.setSize(width, height, false);
     chase.resize(width, height);
   };
   const governor = new Governor(
-    () => resize(),
+    (step) => {
+      LodField.detail = quality.lod * step.lod;
+      for (const lawn of lawns) lawn.setReach(step.grass);
+      resize();
+    },
     () => {
       if (!params.has('fly') && document.visibilityState === 'visible') toPlain('slow');
     },
+    quality.name === 'high',
   );
   window.addEventListener('resize', resize);
+  if (params.has('step')) governor.pin(Number(params.get('step')));
   resize();
 
   let mode: Mode = 'intro';
@@ -985,6 +994,8 @@ async function start(): Promise<void> {
   shadowCamera.layers.set(1);
   bird.root.traverse((node) => node.layers.enable(1));
   const silhouette = new THREE.MeshBasicNodeMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+  const shadowScene = new THREE.Scene();
+  shadowScene.overrideMaterial = silhouette;
   const clearWas = new THREE.Color();
   const castShadow = () => {
     const light = env.sunDir.value;
@@ -997,11 +1008,11 @@ async function start(): Promise<void> {
     renderer.getClearColor(clearWas);
     const alphaWas = renderer.getClearAlpha();
     renderer.setClearColor(0x000000, 1);
-    scene.overrideMaterial = silhouette;
+    shadowScene.add(bird.root);
     renderer.setRenderTarget(birdShadow);
-    renderer.render(scene, shadowCamera);
+    renderer.render(shadowScene, shadowCamera);
     renderer.setRenderTarget(null);
-    scene.overrideMaterial = null;
+    scene.add(bird.root);
     renderer.setClearColor(clearWas, alphaWas);
   };
 
@@ -1010,11 +1021,14 @@ async function start(): Promise<void> {
   let frameTime = 0;
   let last = performance.now();
 
+  const prof = params.has('prof') ? new Profiler(renderer, scene) : null;
   renderer.setAnimationLoop(() => {
+    prof?.frame();
+    prof?.begin('update');
     const now = performance.now();
     const dt = Math.min(0.05, (now - last) / 1000);
     frameTime += now - last;
-    governor.tick(now - last);
+    if (!prof) governor.tick(now - last);
     last = now;
     frames++;
 
@@ -1248,11 +1262,14 @@ async function start(): Promise<void> {
     const below = panel !== null && panel.width > window.innerWidth * 0.8;
     chase.shift(dt, panel && !below ? panel.width / 2 : 0, panel && below ? panel.height * 0.45 : 0, window.innerWidth, window.innerHeight);
     sky.position.copy(chase.camera.position);
+    trees.update(chase.camera.position);
+    scatter.update(chase.camera.position);
     mood(chase.camera.position, dt);
     motes.update(dt);
     village.beacon.rotation.y = now * 0.00045;
     const tankDistance = Math.hypot(flight.position.x - tank.x, flight.position.z - tank.z);
     basin.update(tankDistance < 380);
+    basin.focus(chase.camera.position.distanceTo(basin.group.position));
     if (sound.enabled) {
       if (now - shoreAt > 250) {
         shoreAt = now;
@@ -1271,8 +1288,13 @@ async function start(): Promise<void> {
       });
     }
     hud.update();
+    prof?.end('update');
+    prof?.begin('shadow');
     castShadow();
+    prof?.end('shadow');
+    prof?.begin('render');
     post.render();
+    prof?.end('render');
     if (snap) {
       snap = false;
       postcard();
@@ -1292,8 +1314,12 @@ async function start(): Promise<void> {
 
   await nextFrame();
   try {
+    trees.reveal(true);
+    scatter.reveal(true);
     await renderer.compileAsync(scene, chase.camera);
   } catch {}
+  trees.reveal(false);
+  scatter.reveal(false);
   await stage(1);
   document.getElementById('boot')?.classList.add('done');
   document.body.classList.add('painted');
@@ -1304,14 +1330,15 @@ async function start(): Promise<void> {
     backend: webgpu ? 'webgpu' : 'webgl2',
     quality: quality.name,
     scale: +governor.scale.toFixed(2),
+    step: governor.index,
     fps: frames ? Math.round((1000 * frames) / frameTime) : 0,
     frames,
     mode,
     position: flight.position.toArray().map((v) => Math.round(v)),
     calls: renderer.info.render.drawCalls,
     triangles: renderer.info.render.triangles,
-    trees: trees.userData.count,
-    scatter: scatter.userData.count,
+    trees: trees.count,
+    scatter: scatter.count,
     boot: Math.round(bootTime),
   });
   if (params.has('debug')) {
@@ -1323,7 +1350,7 @@ async function start(): Promise<void> {
     const glInfo = gl ? gl.getParameter(gl.getExtension('WEBGL_debug_renderer_info')?.UNMASKED_RENDERER_WEBGL ?? gl.RENDERER) : '';
     setInterval(() => {
       box.textContent = [
-        `${webgpu ? 'webgpu' : 'webgl2'} ${quality.name} dpr ${window.devicePixelRatio} scale ${governor.scale.toFixed(2)}`,
+        `${webgpu ? 'webgpu' : 'webgl2'} ${quality.name} dpr ${window.devicePixelRatio} step ${governor.index} scale ${governor.scale.toFixed(2)} lod ${LodField.detail.toFixed(2)}`,
         `gpu ${adapter ? `${adapter.vendor} ${adapter.architecture} ${adapter.description}` : glInfo}`,
         `fps ${frames ? Math.round((1000 * frames) / frameTime) : 0} form ${form} mode ${mode}`,
         navigator.userAgent,
@@ -1331,6 +1358,9 @@ async function start(): Promise<void> {
     }, 500);
   }
   window.__dbg = {
+    prof,
+    quality,
+    lawns,
     flight,
     bird,
     map,

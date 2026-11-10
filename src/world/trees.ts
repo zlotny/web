@@ -6,10 +6,12 @@ import { WORLD_SIZE, type HeightMap } from './height';
 import type { LightMap, MaskMap } from './lightmap';
 import type { Obstacles } from './obstacles';
 import { applyFog, brush, env, paint, type N } from './shading';
+import { LodField, type LodKind } from './lod';
 
 interface Species {
   name: string;
   geometry: THREE.BufferGeometry;
+  levels: THREE.BufferGeometry[];
   dark: [number, number, number];
   light: [number, number, number];
   trunk: [number, number, number];
@@ -27,10 +29,10 @@ interface Blob {
   ry: number;
 }
 
-function canopy(blobs: Blob[], seed: number, top: number, bottom: number): THREE.BufferGeometry[] {
+function canopy(blobs: Blob[], seed: number, top: number, bottom: number, detail = 1): THREE.BufferGeometry[] {
   const simplex = new Simplex(seed);
   return blobs.map((blob, index) => {
-    const geometry = new THREE.IcosahedronGeometry(1, 1);
+    const geometry = new THREE.IcosahedronGeometry(1, detail);
     const position = geometry.attributes.position as THREE.BufferAttribute;
     const normal = geometry.attributes.normal as THREE.BufferAttribute;
     const data = new Float32Array(position.count * 3);
@@ -54,7 +56,8 @@ function canopy(blobs: Blob[], seed: number, top: number, bottom: number): THREE
   });
 }
 
-function dabs(blobs: Blob[], seed: number, top: number, bottom: number, perBlob: number, size: number): THREE.BufferGeometry {
+function dabs(blobs: Blob[], seed: number, top: number, bottom: number, perBlob: number, size: number, keep = 1): THREE.BufferGeometry {
+  const grow = Math.sqrt(keep);
   const rand = mulberry32(seed);
   const positions: number[] = [];
   const normals: number[] = [];
@@ -75,7 +78,7 @@ function dabs(blobs: Blob[], seed: number, top: number, bottom: number, perBlob:
       tangent.set(-out.z, 0, out.x).normalize();
       bitangent.crossVectors(out, tangent).normalize();
       const spin = rand() * Math.PI;
-      const w = size * (0.6 + rand() * 0.7);
+      const w = size * (0.6 + rand() * 0.7) * grow;
       const h = w * (0.55 + rand() * 0.5);
       const tilt = 0.35 + rand() * 0.5;
       const corners = [
@@ -95,10 +98,12 @@ function dabs(blobs: Blob[], seed: number, top: number, bottom: number, perBlob:
       });
       soft.set(center.x, (center.y - (top + bottom) / 2) * 1.3, center.z).normalize().lerp(out, 0.4).normalize();
       const shade = THREE.MathUtils.clamp((center.y - bottom) / (top - bottom) + (rand() - 0.5) * 0.3, 0, 1);
+      const tones = [rand(), rand(), rand(), rand(), rand(), rand()];
+      if (k % keep !== 0) continue;
       for (const i of [0, 1, 2, 0, 2, 3]) {
         positions.push(corners[i].x, corners[i].y, corners[i].z);
         normals.push(soft.x, soft.y, soft.z);
-        leaf.push(1, shade, rand());
+        leaf.push(1, shade, tones.shift()!);
       }
     }
     void index;
@@ -127,10 +132,8 @@ function spine(shape: TrunkShape, t: number, out: THREE.Vector3): THREE.Vector3 
   return out.set(shape.bendX * t * t + wobble, t * shape.height, shape.bendZ * t * t + Math.cos(t * 4.1) * shape.twist * t * 0.7);
 }
 
-function trunk(shape: TrunkShape, seed: number): THREE.BufferGeometry {
+function trunk(shape: TrunkShape, seed: number, rings = 10, segments = 10): THREE.BufferGeometry {
   const simplex = new Simplex(seed);
-  const rings = 10;
-  const segments = 10;
   const positions: number[] = [];
   const normals: number[] = [];
   const leaf: number[] = [];
@@ -166,8 +169,7 @@ function trunk(shape: TrunkShape, seed: number): THREE.BufferGeometry {
   return geometry;
 }
 
-function limb(from: THREE.Vector3, to: THREE.Vector3, r0: number, r1: number, height: number): THREE.BufferGeometry {
-  const segments = 6;
+function limb(from: THREE.Vector3, to: THREE.Vector3, r0: number, r1: number, height: number, segments = 6): THREE.BufferGeometry {
   const positions: number[] = [];
   const normals: number[] = [];
   const leaf: number[] = [];
@@ -315,23 +317,34 @@ const RECIPES: Recipe[] = [
   },
 ];
 
+const LEVELS = [
+  { rings: 10, segments: 10, limbSegments: 6, detail: 1, keep: 1 },
+  { rings: 6, segments: 7, limbSegments: 5, detail: 1, keep: 2 },
+  { rings: 4, segments: 5, limbSegments: 4, detail: 0, keep: 4 },
+  { rings: 2, segments: 4, limbSegments: 3, detail: 0, keep: 8 },
+];
+
 function speciesList(): Species[] {
   const tip = new THREE.Vector3();
   return RECIPES.map((recipe) => {
     const top = Math.max(...recipe.blobs.map((blob) => blob.y + blob.ry));
     const bottom = Math.min(...recipe.blobs.map((blob) => blob.y - blob.ry));
     const height = top;
-    const parts: THREE.BufferGeometry[] = [trunk(recipe.shape, recipe.seed)];
-    spine(recipe.shape, 0.92, tip);
-    const ordered = [...recipe.blobs].sort((a, b) => Math.hypot(b.x - tip.x, b.z - tip.z) - Math.hypot(a.x - tip.x, a.z - tip.z));
-    for (const blob of ordered.slice(0, recipe.limbs)) {
-      parts.push(limb(tip.clone(), new THREE.Vector3(blob.x, blob.y - blob.ry * 0.3, blob.z), recipe.shape.top * 0.8, recipe.shape.top * 0.3, height));
-    }
-    parts.push(...canopy(recipe.blobs, recipe.seed, top, bottom), dabs(recipe.blobs, recipe.seed, top, bottom, recipe.dabs, recipe.dabSize));
+    const levels = LEVELS.map(({ rings, segments, limbSegments, detail, keep }) => {
+      const parts: THREE.BufferGeometry[] = [trunk(recipe.shape, recipe.seed, rings, segments)];
+      spine(recipe.shape, 0.92, tip);
+      const ordered = [...recipe.blobs].sort((a, b) => Math.hypot(b.x - tip.x, b.z - tip.z) - Math.hypot(a.x - tip.x, a.z - tip.z));
+      for (const blob of ordered.slice(0, recipe.limbs)) {
+        parts.push(limb(tip.clone(), new THREE.Vector3(blob.x, blob.y - blob.ry * 0.3, blob.z), recipe.shape.top * 0.8, recipe.shape.top * 0.3, height, limbSegments));
+      }
+      parts.push(...canopy(recipe.blobs, recipe.seed, top, bottom, detail), dabs(recipe.blobs, recipe.seed, top, bottom, recipe.dabs, recipe.dabSize, keep));
+      return build(parts);
+    });
     const crown = Math.max(...recipe.blobs.map((blob) => Math.hypot(blob.x, blob.z) + blob.rx));
     return {
       name: recipe.name,
-      geometry: build(parts),
+      geometry: levels[0],
+      levels,
       dark: recipe.dark,
       light: recipe.light,
       trunk: recipe.bark,
@@ -343,7 +356,7 @@ function speciesList(): Species[] {
   });
 }
 
-function treeMaterial(species: Species): THREE.MeshBasicNodeMaterial {
+function treeMaterial(species: Species, cutout: boolean): THREE.MeshBasicNodeMaterial {
   const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
   const leaf: N = attribute('leaf', 'vec3');
   const random = hash(instanceIndex);
@@ -363,14 +376,18 @@ function treeMaterial(species: Species): THREE.MeshBasicNodeMaterial {
   const depth = mix(float(0.62), float(1.1), leaf.y).mul(leaf.x).add(leaf.x.oneMinus().mul(0.75));
   const soft = normalWorld.add(vec3(0, 0.55, 0).mul(leaf.x)).normalize();
   material.colorNode = applyFog(paint(albedo, soft, positionWorld, depth, 0.62, false), positionWorld);
-  const near = positionWorld.sub(cameraPosition).length();
-  material.opacityNode = smoothstep(3.5, 8, near).add(dab.sub(0.5).mul(0.6));
-  material.alphaTest = 0.5;
+  if (cutout) {
+    const near = positionWorld.sub(cameraPosition).length();
+    material.opacityNode = smoothstep(3.5, 8, near).add(dab.sub(0.5).mul(0.6));
+    material.alphaTest = 0.5;
+  }
   return material;
 }
 
 export interface TreeSettings {
   density: number;
+  chunk: number;
+  ranges: number[];
 }
 
 export function createTrees(
@@ -380,13 +397,10 @@ export function createTrees(
   settings: TreeSettings,
   blocked: (x: number, z: number) => boolean,
   obstacles: Obstacles,
-): THREE.Group {
-  const group = new THREE.Group();
-  group.name = 'trees';
+): LodField {
   const species = speciesList();
   const forest = new Simplex(4242);
   const rand = mulberry32(99);
-  const chunkSize = 420;
   const windYaw = Math.atan2(-env.wind.value.y, env.wind.value.x);
   const buckets = new Map<string, THREE.Matrix4[]>();
   const spacing = 8.5;
@@ -430,7 +444,7 @@ export function createTrees(
       obstacles.add(px, pz, tree.girth * scale, h - 1, h + tree.bottom * tall);
       if (index !== 6) obstacles.add(px, pz, tree.crown * scale * 0.78, h + tree.bottom * tall, h + tree.height * tall);
       dummy.updateMatrix();
-      const key = `${index}:${Math.floor(px / chunkSize)}:${Math.floor(pz / chunkSize)}`;
+      const key = String(index);
       let list = buckets.get(key);
       if (!list) buckets.set(key, (list = []));
       list.push(dummy.matrix.clone());
@@ -440,17 +454,13 @@ export function createTrees(
     }
   }
 
-  const materials = species.map(treeMaterial);
-  let total = 0;
+  const materials = species.map((kind) => [treeMaterial(kind, true), treeMaterial(kind, false)]);
+  const kinds = new Map<number, LodKind>();
   for (const [key, matrices] of buckets) {
-    const index = Number(key.split(':')[0]);
-    const mesh = new THREE.InstancedMesh(species[index].geometry, materials[index], matrices.length);
-    matrices.forEach((m, i) => mesh.setMatrixAt(i, m));
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-    group.add(mesh);
-    total += matrices.length;
+    const index = Number(key);
+    let kind = kinds.get(index);
+    if (!kind) kinds.set(index, (kind = { levels: species[index].levels, material: materials[index], items: [] }));
+    kind.items.push(...matrices);
   }
-  group.userData.count = total;
-  return group;
+  return new LodField('trees', [...kinds.values()], settings.chunk, settings.ranges);
 }

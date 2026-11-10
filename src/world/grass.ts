@@ -1,5 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
+  Fn,
+  If,
   attribute,
   cos,
   float,
@@ -11,6 +13,7 @@ import {
   positionGeometry,
   sin,
   smoothstep,
+  step,
   time,
   uniform,
   varying,
@@ -66,16 +69,20 @@ export class Grass {
   readonly mesh: THREE.Mesh;
   readonly focus = uniform(new THREE.Vector2());
   readonly lead: number;
+  private side: number;
+  private columns = uniform(1);
 
   constructor(settings: GrassSettings) {
     const { side, spacing } = settings;
     this.lead = settings.lead;
-    const span = side * spacing;
+    this.side = side;
+    this.columns.value = side;
+    const span: N = this.columns.mul(spacing);
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
 
     const index: N = instanceIndex;
     const id = index.toFloat();
-    const cell = vec2(id.mod(side), floor(id.div(side)));
+    const cell = vec2(id.mod(this.columns), floor(id.div(this.columns)));
     const r1 = hash(index);
     const r2 = hash(index.add(7919));
     const r3 = hash(index.add(15485863));
@@ -93,7 +100,7 @@ export class Grass {
       .mul(smoothstep(0.2, 0.4, patch.add(r3.mul(0.25))))
       .mul(smoothstep(0.5, 0.22, groundMask(world).r));
     const distance = length(world.sub(this.focus));
-    const outer = smoothstep(span * 0.5, span * 0.34, distance);
+    const outer = smoothstep(span.mul(0.5), span.mul(0.34), distance);
     const inner = settings.near > 0 ? smoothstep(settings.near * 0.6, settings.near, distance) : float(1);
     const tall = r3.mul(0.8).add(0.6).mul(grow).mul(outer).mul(inner).mul(settings.height);
 
@@ -112,11 +119,20 @@ export class Grass {
     const ox: N = cos(yaw).mul(lx).sub(sin(yaw).mul(lz)).add(env.wind.x.mul(bend)).add(shove.x);
     const oy: N = positionGeometry.y.mul(tall).mul(press.mul(0.55).oneMinus());
     const oz: N = sin(yaw).mul(lx).add(cos(yaw).mul(lz)).add(env.wind.y.mul(bend)).add(shove.y);
-    const offset: N = vec3(ox, oy, oz);
+    const alive: N = step(0.001, tall);
+    const offset: N = vec3(ox, oy, oz).mul(alive);
     const worldPos: N = varying(vec3(world.x, ground, world.y).add(offset));
     material.positionNode = vec3(world.x, ground, world.y).add(offset);
 
-    const root: N = varying(terrainAlbedo(world, ground, normal));
+    const root: N = varying(
+      Fn(() => {
+        const color = vec3(0).toVar();
+        If(tall.greaterThan(0.001), () => {
+          color.assign(terrainAlbedo(world, ground, normal));
+        });
+        return color;
+      })(),
+    );
     const groundNormal: N = varying(normal);
     const height: N = varying(tip);
     const tint: N = varying(r3);
@@ -129,6 +145,12 @@ export class Grass {
     this.mesh.count = side * side;
     this.mesh.frustumCulled = false;
     this.mesh.name = 'grass';
+  }
+
+  setReach(fraction: number): void {
+    const columns = Math.max(8, Math.round(this.side * fraction));
+    this.columns.value = columns;
+    this.mesh.count = columns * columns;
   }
 
   follow(x: number, z: number, fx: number, fz: number): void {
