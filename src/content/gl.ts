@@ -237,7 +237,6 @@ export const gl: Content = {
           'Gústanme as cousas con motor: dúas motos e un coupé. A mecánica fágoa eu. Estradas de curvas, sobre todo.',
           'Teño unha colección de consolas e xogos que empeza na NES e non parou. Zelda, Golden Sun, Digimon e Pokémon teñen os seus propios andeis. Xoguei anos a World of Warcraft, pola Horda.',
           'Toco a guitarra eléctrica por gusto, sobre todo hard rock e metal, leo fantasía e argallo coas miñas propias máquinas.',
-          'Cando era pequeno, na escola sempre había alguén cun tío que traballaba en Nintendo. Estou orgulloso de agora poder dicir que a miña irmá traballa alí.',
         ],
       },
     ],

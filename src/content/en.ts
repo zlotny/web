@@ -237,7 +237,6 @@ export const en: Content = {
           'I like things with an engine: two motorbikes and a coupé. I do my own wrenching. Curvy roads, mostly.',
           'I keep a collection of consoles and games that starts at the NES and has not stopped. Zelda, Golden Sun, Digimon and Pokémon have their own shelves. I played World of Warcraft for years, for the Horde.',
           'I play electric guitar for fun, mostly hard rock and metal, I read fantasy, and I tinker with my own machines.',
-          'When I was a kid, somebody at school always had an uncle who worked at Nintendo. I am proud that I can now say that my sister works there.',
         ],
       },
     ],
